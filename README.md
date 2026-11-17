@@ -1,70 +1,132 @@
 # Launch-Day Mystery
 
-A Snowflake-native AI demo that investigates an 18% launch-day order drop using Cortex Analyst, Cortex Search, and a source-cited incident brief in Streamlit.
+**An AI-assisted incident investigation backed by live Snowflake queries.**
 
-It's June 4, 2026. A fictional retailer has just shipped a checkout update. Orders fell from 1,000 to 820 while traffic stayed at 7,000 sessions per hour. The incident lead has to decide whether to disable the feature flag.
+A fictional retailer enables one-tap checkout for a group of iOS shoppers at **10:00 UTC**. In the next hour, orders fall **18%** even though traffic stays steady. A payment-provider alert comes in. The incident lead has to decide whether to roll back the release.
 
-## What runs where
+> **Verified on a Snowflake trial.** Codex called two local MCP tools, retrieved live cohort metrics and incident notes from Snowflake, and produced a cited rollback brief.
 
-| Snowflake product | Role |
-|---|---|
-| Snowflake SQL | Calculates the checkout funnel from synthetic shopper events |
-| Semantic Views and Cortex Analyst | Support natural-language drill-down in Snowsight |
-| Cortex Search | Retrieves release notes, operational telemetry, and provider alerts |
-| Cortex AI SQL | Generates a structured assessment and next check with source quotes |
-| Streamlit in Snowflake | Hosts the funnel and incident investigation |
+## The evidence
 
-The seed defines eight cohort-hour targets. Snowflake expands them into synthetic storefront sessions, checkout starts, orders, and observed address-validation timeouts. The app and Cortex Analyst read the event-derived funnel. Each event has a timestamp and session ID, so you can trace a single checkout.
+| iOS cohort | Checkout starts before → after | Orders before → after | Completion before → after | Logged timeouts before → after |
+| --- | ---: | ---: | ---: | ---: |
+| Rollout · new flow after 10:00 | 500 → 500 | 300 → 120 | **60.0% → 24.0%** | **8 → 120** |
+| Holdout · stayed on the old flow | 165 → 165 | 100 → 100 | 60.6% → 60.6% | 8 → 8 |
 
-The Streamlit app uses fixed funnel SQL so that every brief starts with the same metrics. Cortex Analyst is a separate live step in Snowsight. The Python code checks each quote against the retrieved source text. You can expand the retrieved notes and assess whether the quotes support the model's claims.
+The Snowflake event table represents **14,000 synthetic shopper sessions** across two hours. Each shopper journey can include a storefront visit, checkout start, and order or timeout. The payment alert (`PAY-017`) starts at **11:20 UTC**, after the **10:00–11:00 UTC** investigation window.
 
-## Deploy
+## How it works
 
-Use a Snowflake account with Cortex Search, Cortex Analyst, and Streamlit available. Configure a [Snowflake CLI connection](https://docs.snowflake.com/en/developer-guide/snowflake-cli/connecting/configure-connections) with a role authorized to create the demo database and warehouse and use the Cortex features. Confirm your account and role support `claude-haiku-4-5` before the live demo. See the [Cortex AI access documentation](https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-privileges-and-access).
-
-From the repository root, replace `my_demo_connection` with your connection name.
-
-```bash
-snow connection test -c my_demo_connection
-bash deploy.sh my_demo_connection
+```mermaid
+flowchart LR
+    A["Codex"] -->|"Calls two read-only tools"| B["Local MCP server"]
+    B -->|"Snowflake Python Connector"| C["Snowflake SQL"]
+    C --> D["Checkout funnel"]
+    C --> E["Incident notes"]
+    A --> F["Cited rollback brief"]
 ```
 
-The script creates and seeds `LAUNCH_MYSTERY.DEMO`, creates the semantic view and search service, stages the app, and runs smoke queries. Open `INCIDENT_ROOM` from Streamlit in Snowsight. Use the deployment role during rehearsal. After reseeding, allow the existing search service to refresh before rehearsing with changed notes.
+| Component | Responsibility |
+| --- | --- |
+| **Snowflake** | Stores shopper events and incident notes. SQL calculates the funnel from events. |
+| **[Local MCP server](mcp/incident_server.py)** | Gives Codex two fixed SQL tools through a dedicated Snowflake reader role. |
+| **Codex** | Interprets the returned rows, cites the timeline evidence, and proposes a recovery check. |
 
-## Five-minute interview walkthrough
+This trial path uses Snowflake SQL for data access and Codex for model inference. The [Snowflake-native deployment](#snowflake-native-deployment) includes Cortex and Streamlit for accounts with those features enabled.
 
-1. **0:00–0:45 · Frame the decision.** Open the incident room and show the 18% order drop with steady traffic. Ask what the interviewer would investigate first.
-2. **0:45–1:45 · Locate the drop.** In Snowsight Cortex Analyst, select `LAUNCH_MYSTERY.DEMO.CHECKOUT_FUNNEL` and ask “What were checkout starts, completed orders, and checkout completion rate by release phase for each iOS cohort?” Inspect the generated SQL. Rollout goes from 60% to 24%, while holdout stays near 60.6%. Back in the app, click **Trace a timed-out iOS checkout** to see the events for one shopper session.
-3. **1:45–3:00 · Test the competing explanation.** Run **Payment-provider hypothesis** in Streamlit. Open the evidence panel. The first affected authorization was at or after the provider incident began at 11:20 UTC, after the 10:00–11:00 drop window.
-4. **3:00–4:15 · Decide on the next action.** Run **Rollback decision**. The rollout is the leading hypothesis. Propose temporarily disabling the flag and comparing recovery against the holdout. The telemetry sample alone cannot establish how many orders the timeouts affected.
-5. **4:15–5:00 · Test the AI.** Run **Missing evidence**. The notes contain no commit ID or author. Look for an explicit statement that the answer is unavailable. Discuss how to test retrieval coverage and whether cited evidence actually entails the generated claim.
+## Reproduce the trial demo
 
-## Trial walkthrough with Codex and MCP
+You’ll need Snowsight access to a Snowflake account, Snowflake CLI, Codex, and [uv](https://docs.astral.sh/uv/). Run the setup scripts in a Snowflake account where you can create the named demo objects.
 
-If your trial blocks Cortex Search or AI text generation, run the setup, seed, and event scripts in order, then run `sql/06_mcp.sql`. The managed MCP server exposes read-only SQL. Snowflake runs the queries and Codex writes the brief from the rows it retrieves.
+### 1. Load the data
 
-1. Grant `LAUNCH_MYSTERY_MCP_READER` to your own Snowflake username. Check the target username with `SELECT CURRENT_USER();`. The role can select the checkout funnel and incident notes.
-2. Run `sql/07_codex_oauth.sql` as an admin and copy the returned MCP URL. In Codex desktop, go to **Settings → MCP servers** and add a **Streamable HTTP** server named `launch-day-mystery` using that URL.
-3. In Snowsight, run `SELECT SYSTEM$SHOW_OAUTH_CLIENT_SECRETS('LAUNCH_MYSTERY_CODEX_OAUTH');`. Add this block to your personal `~/.codex/config.toml` with the returned client ID and first client secret. Keep the secret outside the repository.
+In Snowsight, open a SQL file. Run each script in full and in this order:
 
-   ```toml
-   [mcp_servers.launch-day-mystery.oauth]
-   client_id = "YOUR_CLIENT_ID"
-   client_secret = "YOUR_CLIENT_SECRET"
-   callback_url = "http://127.0.0.1:8765/callback"
-   callback_port = 8765
-   ```
+1. [01_setup.sql](sql/01_setup.sql) creates the database, X-Small warehouse, and seed tables.
+2. [02_seed.sql](sql/02_seed.sql) loads the synthetic checkout totals and incident notes.
+3. [02b_events.sql](sql/02b_events.sql) generates individual shopper events and creates the funnel view.
 
-4. Run `codex mcp login launch-day-mystery --scopes session:role:LAUNCH_MYSTERY_MCP_READER` and check that the displayed role matches before authorizing.
-5. Ask Codex to use the MCP tool to compare the iOS cohorts, verify the payment alert timeline, and recommend a reversible action. Ask for the exact commit that caused the timeout to see how it handles missing evidence.
+### 2. Create the reader role
 
-## Verify and clean up
+Run the statements below with an admin role. Replace `YOUR_SNOWFLAKE_USER` with the exact result of `SELECT CURRENT_USER();`.
+
+```sql
+CREATE ROLE IF NOT EXISTS LAUNCH_MYSTERY_MCP_READER;
+
+GRANT USAGE ON DATABASE LAUNCH_MYSTERY TO ROLE LAUNCH_MYSTERY_MCP_READER;
+GRANT USAGE ON SCHEMA LAUNCH_MYSTERY.DEMO TO ROLE LAUNCH_MYSTERY_MCP_READER;
+GRANT USAGE ON WAREHOUSE LAUNCH_MYSTERY_WH TO ROLE LAUNCH_MYSTERY_MCP_READER;
+GRANT SELECT ON VIEW LAUNCH_MYSTERY.DEMO.CHECKOUT_EVENT_FUNNEL TO ROLE LAUNCH_MYSTERY_MCP_READER;
+GRANT SELECT ON TABLE LAUNCH_MYSTERY.DEMO.INCIDENT_NOTES TO ROLE LAUNCH_MYSTERY_MCP_READER;
+
+GRANT ROLE LAUNCH_MYSTERY_MCP_READER TO USER "YOUR_SNOWFLAKE_USER";
+```
+
+### 3. Verify browser sign-in and SQL
+
+Set `YOUR_ACCOUNT_IDENTIFIER` and `YOUR_SNOWFLAKE_USER` before running these commands. The account identifier usually takes the form `organization-account`. `OAUTH_AUTHORIZATION_CODE` uses Snowflake’s browser sign-in flow, including Google sign-in when offered by the account. [Snowflake OAuth for local applications](https://docs.snowflake.com/en/user-guide/oauth-local-applications)
+
+```bash
+snow connection add --no-interactive \
+  --connection-name launch_mystery_oauth \
+  --account YOUR_ACCOUNT_IDENTIFIER \
+  --user YOUR_SNOWFLAKE_USER \
+  --authenticator OAUTH_AUTHORIZATION_CODE \
+  --role LAUNCH_MYSTERY_MCP_READER \
+  --warehouse LAUNCH_MYSTERY_WH \
+  --database LAUNCH_MYSTERY \
+  --schema DEMO
+
+snow connection test -c launch_mystery_oauth
+snow sql -c launch_mystery_oauth -q 'SELECT CURRENT_ROLE() AS active_role, COUNT(*) AS funnel_rows FROM LAUNCH_MYSTERY.DEMO.CHECKOUT_EVENT_FUNNEL'
+```
+
+The SQL command should return `LAUNCH_MYSTERY_MCP_READER` and `8`. A browser confirmation means sign-in worked. The result table in Terminal confirms the query ran.
+
+### 4. Add the local MCP server to Codex
+
+From the repository root, run:
+
+```bash
+codex mcp add launch-day-mystery-local -- "$(command -v uv)" run --script "$(pwd)/mcp/incident_server.py"
+```
+
+On macOS, if Terminal reports `codex: command not found`, use the desktop app’s bundled CLI:
+
+```bash
+"/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex" \
+  mcp add launch-day-mystery-local -- "$(command -v uv)" run --script "$(pwd)/mcp/incident_server.py"
+```
+
+Open a **new Codex chat**. Complete browser sign-in if Snowflake prompts during a tool call.
+
+## Five-minute interview script
+
+**1. Frame the decision · 30 seconds.** “Orders are down 18% an hour after launch. Traffic is steady. Would you roll back the checkout release?”
+
+**2. Run the investigation · 2 minutes.** Paste this into Codex and show the tool calls:
+
+> Use `launch-day-mystery-local` to call `compare_ios_checkout` and `read_incident_notes`. Show the numbers returned by Snowflake. Compare the rollout and holdout, check the payment-provider timeline, and recommend one reversible action. Cite the note IDs for timeline claims and explain how you would measure recovery.
+
+**3. Make the call · 90 seconds.** Disable the flag for the rollout cohort. Completion fell **36 percentage points** with identical checkout starts and a stable holdout. The timing and cohort split make the release the leading suspect. Track completion and timeouts per 100 checkout starts after rollback, comparing both cohorts over the same windows. The sampled logs leave the exact contribution of the timeout unresolved.
+
+**4. Test the limits · 1 minute.** Ask, “Which exact code commit introduced the timeout, and who authored it?” The event log and notes contain no commit or author. Look for an explicit acknowledgment that the evidence runs out there.
+
+## Snowflake-native deployment
+
+For an AI-enabled Snowflake account, connect the incident room to **Cortex Search**, **Cortex AI SQL**, and **Streamlit in Snowflake**. The same event-derived funnel is exposed to **Cortex Analyst** through a semantic view in Snowsight. The Streamlit app includes a shopper event trace and checks generated quotes against the retrieved notes.
+
+```bash
+snow connection test -c my_admin_connection
+bash deploy.sh my_admin_connection
+```
+
+Open `LAUNCH_MYSTERY.DEMO.INCIDENT_ROOM` in Snowsight. The deploy script runs checks for checkout totals, the semantic view, Search, and model access. This path is included in the repo and still needs an end-to-end run on an AI-enabled account. The [managed MCP setup](docs/managed-mcp.md) records the separate account limitation observed during testing.
+
+## Tests and cleanup
 
 ```bash
 python3 -m unittest discover -s tests -v
-snow sql -c my_demo_connection -f sql/05_smoke.sql
 ```
 
-The local tests exercise the seeded data, funnel calculations, and citation validation without an account. The Snowflake smoke queries check SQL totals, the semantic view, Search retrieval, and model access. Before an interview, also rehearse all three app prompts and the Cortex Analyst query in Snowsight.
-
-The warehouse auto-suspends after 60 seconds. Cortex Search and AI functions can incur separate usage charges. When done, `snow sql -c my_demo_connection -f sql/99_cleanup.sql` drops the dedicated demo database, warehouse, OAuth integration, and reader role.
+The local suite checks the seeded metrics and citation validation. The demo warehouse auto-suspends after 60 seconds. To remove the dedicated demo database, warehouse, role, and optional OAuth integration, review [99_cleanup.sql](sql/99_cleanup.sql) and run it as an admin when you’re done.
