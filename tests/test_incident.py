@@ -14,6 +14,7 @@ class IncidentTest(unittest.TestCase):
         with sqlite3.connect(":memory:") as connection:
             connection.executescript(setup[setup.index("CREATE TABLE"):])
             connection.executescript(seed[seed.index("BEGIN;"):])
+            connection.execute("CREATE VIEW CHECKOUT_EVENT_FUNNEL AS SELECT *, 0 AS ADDRESS_TIMEOUTS FROM CHECKOUT_HOURLY")
             query = COHORT_SQL.replace("LAUNCH_MYSTERY.DEMO.", "")
             connection.row_factory = sqlite3.Row
             rows = connection.execute(query).fetchall()

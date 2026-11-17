@@ -6,7 +6,7 @@ from snowflake.core import Root
 from snowflake.snowpark.context import get_active_session
 
 from incident import (
-    COHORT_SQL, COMPLETION_SQL, MODEL, QUESTIONS, SEARCH_LIMIT,
+    COHORT_SQL, COMPLETION_SQL, MODEL, QUESTIONS, SEARCH_LIMIT, TRACE_SQL,
     build_prompt, validate_brief,
 )
 
@@ -44,6 +44,14 @@ funnel, investigation = st.tabs(["Checkout funnel", "Investigate"])
 with funnel:
     st.dataframe(metrics, hide_index=True, use_container_width=True)
     st.caption("Completion is orders divided by checkout starts. Compare the same cohort before and after.")
+    if st.button("Trace a timed-out iOS checkout"):
+        try:
+            trace = [row.as_dict() for row in session.sql(TRACE_SQL).collect()]
+            st.dataframe(trace, hide_index=True, use_container_width=True)
+        except Exception as error:
+            st.error("Could not load a shopper event trace.")
+            with st.expander("Details"):
+                st.text(str(error))
     with st.expander("Inspect funnel SQL"):
         st.code(COHORT_SQL.strip(), language="sql")
 

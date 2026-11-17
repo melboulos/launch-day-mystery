@@ -10,7 +10,7 @@ fi
 connection="$1"
 stage='@LAUNCH_MYSTERY.DEMO.APP_FILES'
 
-for script in sql/01_setup.sql sql/02_seed.sql sql/03_services.sql; do
+for script in sql/01_setup.sql sql/02_seed.sql sql/02b_events.sql sql/03_services.sql; do
   snow sql -c "$connection" --enhanced-exit-codes -f "$script"
 done
 

@@ -2,7 +2,7 @@ USE SCHEMA LAUNCH_MYSTERY.DEMO;
 USE WAREHOUSE LAUNCH_MYSTERY_WH;
 
 CREATE OR REPLACE SEMANTIC VIEW CHECKOUT_FUNNEL
-  TABLES (funnel AS CHECKOUT_HOURLY)
+  TABLES (funnel AS CHECKOUT_EVENT_FUNNEL)
   DIMENSIONS (
     funnel.hour_utc AS WINDOW_START_UTC,
     funnel.release_phase AS RELEASE_PHASE,
@@ -13,6 +13,7 @@ CREATE OR REPLACE SEMANTIC VIEW CHECKOUT_FUNNEL
     funnel.sessions AS SUM(STOREFRONT_SESSIONS),
     funnel.checkout_attempts AS SUM(CHECKOUT_STARTS),
     funnel.completed_orders AS SUM(ORDERS),
+    funnel.address_validation_timeouts AS SUM(ADDRESS_TIMEOUTS),
     funnel.completion_rate AS DIV0(SUM(ORDERS), SUM(CHECKOUT_STARTS))
       COMMENT = 'Fraction of checkout starts that became orders. Multiply by 100 for percent.'
   )
