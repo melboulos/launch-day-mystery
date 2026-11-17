@@ -1,0 +1,8 @@
+name: launch-mystery
+channels:
+  - snowflake
+dependencies:
+  - python=3.11
+  - streamlit
+  - snowflake-snowpark-python
+  - snowflake>=0.8.0
