@@ -1,6 +1,6 @@
 # Snowflake-managed MCP
 
-This is the hosted alternative to the local MCP server. In the tested self-service trial, Snowflake accepted server creation and OAuth authentication. It rejected SQL tool execution with **`399504: Access denied for trial accounts`**. Use the [local MCP walkthrough](../README.md#reproduce-the-trial-demo) to reproduce the verified trial demo.
+This is the hosted alternative to the local MCP server. In the tested self-service trial, Snowflake accepted server creation and OAuth authentication. It rejected SQL tool execution with **`399504: Access denied for trial accounts`**. Use the [local MCP setup](../README.md#local-mcp-setup) for the verified trial connection.
 
 ## Register Codex
 

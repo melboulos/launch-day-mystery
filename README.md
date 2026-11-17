@@ -34,7 +34,7 @@ flowchart LR
 
 This trial path uses Snowflake SQL for data access and Codex for model inference. The [Snowflake-native deployment](#snowflake-native-deployment) includes Cortex and Streamlit for accounts with those features enabled.
 
-## Reproduce the trial demo
+## Local MCP setup
 
 You’ll need Snowsight access to a Snowflake account, Snowflake CLI, Codex, and [uv](https://docs.astral.sh/uv/). Run the setup scripts in a Snowflake account where you can create the named demo objects.
 
@@ -100,17 +100,14 @@ On macOS, if Terminal reports `codex: command not found`, use the desktop app’
 
 Open a **new Codex chat**. Complete browser sign-in if Snowflake prompts during a tool call.
 
-## Five-minute interview script
+## MCP tools and verification
 
-**1. Frame the decision · 30 seconds.** “Orders are down 18% an hour after launch. Traffic is steady. Would you roll back the checkout release?”
+| Tool | Snowflake source | Expected result |
+| --- | --- | --- |
+| `compare_ios_checkout` | `LAUNCH_MYSTERY.DEMO.CHECKOUT_EVENT_FUNNEL` | Four iOS cohort and phase rows with checkout starts, orders, completion percentage, and timeout counts |
+| `read_incident_notes` | `LAUNCH_MYSTERY.DEMO.INCIDENT_NOTES` | Synthetic notes with stable document IDs, titles, and text |
 
-**2. Run the investigation · 2 minutes.** Paste this into Codex and show the tool calls:
-
-> Use `launch-day-mystery-local` to call `compare_ios_checkout` and `read_incident_notes`. Show the numbers returned by Snowflake. Compare the rollout and holdout, check the payment-provider timeline, and recommend one reversible action. Cite the note IDs for timeline claims and explain how you would measure recovery.
-
-**3. Make the call · 90 seconds.** Disable the flag for the rollout cohort. Completion fell **36 percentage points** with identical checkout starts and a stable holdout. The timing and cohort split make the release the leading suspect. Track completion and timeouts per 100 checkout starts after rollback, comparing both cohorts over the same windows. The sampled logs leave the exact contribution of the timeout unresolved.
-
-**4. Test the limits · 1 minute.** Ask, “Which exact code commit introduced the timeout, and who authored it?” The event log and notes contain no commit or author. Look for an explicit acknowledgment that the evidence runs out there.
+Call both tools from a fresh Codex chat to verify the connection. Compare the cohort rows with the evidence table above and confirm the note results include `REL-041` and `PAY-017`. Both tools use fixed SELECT statements and run with the demo reader role.
 
 ## Snowflake-native deployment
 
